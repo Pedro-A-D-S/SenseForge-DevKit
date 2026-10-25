@@ -6,6 +6,13 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# CMake 4 removed compatibility with cmake_minimum_required < 3.5, which the
+# pinned PortAudio v19.7.0 (3.1) and MinHook still declare: configure fails on
+# the GitHub windows-latest runner (CMake 4.x) while local CMake 3.x only
+# warns. Treat the vendored projects as 3.5-compatible instead of patching
+# them.
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+
 if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     message(FATAL_ERROR "SenseForge runtime is x64-only (the game target is 64-bit).")
 endif()
