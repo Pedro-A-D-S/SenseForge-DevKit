@@ -1,0 +1,48 @@
+# Build outputs
+build/
+build-*/
+dist/
+out/
+bin/
+obj/
+target/
+
+# Third-party sources live OUTSIDE the repo (heavy vendored trees) —
+# fetched by tools/fetch_third_party.sh into %LOCALAPPDATA%\senseforge.
+# Keep only the pointer README tracked here.
+third_party/*
+!third_party/README.md
+
+# Node
+node_modules/
+*.local
+.pnpm-store/
+
+# Rust
+**/*.rs.bk
+# Tauri build-time generated (android schemas from tauri-build)
+studio-app/src-tauri/gen/
+
+# Python (DSP pipeline tooling)
+__pycache__/
+*.pyc
+.venv/
+
+# IDE / OS
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+Thumbs.db
+Desktop.ini
+
+# Local runtime artifacts
+*.log
+
+# SF-10: game-audio derivatives — regenerated locally by tools/build_haptic_bank.py
+profiles/*/haptics/*.wav
+!**/src/bin/
+
+# SF-15: downloaded MOD dependencies (tools/mods/package_mod.py)
+.cache/

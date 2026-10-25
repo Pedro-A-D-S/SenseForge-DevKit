@@ -1,0 +1,20 @@
+diff --git a/src/hostapi/wasapi/pa_win_wasapi.c b/src/hostapi/wasapi/pa_win_wasapi.c
+index c76f302..be64e8c 100644
+--- a/src/hostapi/wasapi/pa_win_wasapi.c
++++ b/src/hostapi/wasapi/pa_win_wasapi.c
+@@ -1216,10 +1216,13 @@ static EWindowsVersion GetWindowsVersion()
+ 
+         // RTL_OSVERSIONINFOW equals OSVERSIONINFOW but it is missing inb MinGW winnt.h header,
+         // thus use OSVERSIONINFOW for greater portability
+-        typedef NTSTATUS (WINAPI *LPFN_RTLGETVERSION)(POSVERSIONINFOW lpVersionInformation);
++        // Windows SDK 10.0.26100 no longer exposes NTSTATUS to user mode (it
++        // moved to the driver-only header wdm.h). NTSTATUS is a 32-bit signed
++        // LONG — use the identical base type instead.
++        typedef LONG (WINAPI *LPFN_RTLGETVERSION)(POSVERSIONINFOW lpVersionInformation);
+         LPFN_RTLGETVERSION fnRtlGetVersion;
+ 
+-        #define NTSTATUS_SUCCESS ((NTSTATUS)0x00000000L)
++        #define NTSTATUS_SUCCESS ((LONG)0x00000000L)
+ 
+         // RtlGetVersion must be able to provide true Windows version (Windows 10 may be reported as Windows 8
+         // by GetVersion API)

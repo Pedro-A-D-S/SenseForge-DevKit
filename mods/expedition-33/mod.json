@@ -1,0 +1,85 @@
+{
+  "schema": 1,
+  "slug": "expedition-33",
+  "name": "SenseForge para Clair Obscur: Expedition 33",
+  "game": "Clair Obscur: Expedition 33",
+  "version": "0.1.0",
+  "status": "ready",
+  "summary": "Gatilhos adaptativos, lightbar e vibração do DualSense nativos no Expedition 33: parry dourado, mira livre com resistência no L2, R2 travado no combate e mais.",
+  "store": {"steam_app_id": 1903340},
+  "install_dir": "Sandfall/Binaries/Win64",
+  "executable": "SandFall-Win64-Shipping.exe",
+  "engine": "Unreal Engine 5.4",
+  "build": {
+    "cmake_game_slug": "expedition-33",
+    "cmake_game_name": "Expedition 33"
+  },
+  "files": [
+    {"from": "build:senseforge.expedition-33.addon64", "to": "senseforge.expedition-33.addon64"},
+    {"from": "profiles/expedition33/expedition33.sense.json", "to": "expedition33.sense.json"},
+    {"from": "profiles/expedition33/senseforge_user.ini", "to": "senseforge_user.ini", "strip_ini_sections": ["Dev"]},
+    {"from": "profiles/expedition33/lua/senseforge_bridge.lua", "to": "ue4ss/Mods/SenseForgeBridge/Scripts/main.lua"},
+    {"from": "mods/expedition-33/files/ue4ss/Mods/mods.txt", "to": "ue4ss/Mods/mods.txt"}
+  ],
+  "dependencies": [
+    {
+      "id": "ue4ss",
+      "name": "UE4SS (RE-UE4SS)",
+      "version": "3.0.1-1181-g83330635",
+      "license": "MIT",
+      "homepage": "https://github.com/UE4SS-RE/RE-UE4SS",
+      "url": "https://github.com/UE4SS-RE/RE-UE4SS/releases/download/experimental-latest/UE4SS_v3.0.1-1181-g83330635.zip",
+      "sha256": "b9a166a756605b21058a64cde93bcaab1a855dba3553e5c7e6ce0fa8fdfad7b9",
+      "bundle": true,
+      "extract_to": "",
+      "exclude": ["ue4ss/Mods/mods.txt"],
+      "why": "Lê os eventos de gameplay do jogo (parry, mira, golpes) e os entrega ao SenseForge. Já vem no zip, com o console desligado."
+    },
+    {
+      "id": "reshade",
+      "name": "ReShade com suporte a add-ons",
+      "version": "6.8.0 ou mais novo",
+      "license": "BSD-3-Clause",
+      "homepage": "https://reshade.me",
+      "bundle": false,
+      "why": "Carrega o SenseForge dentro do jogo e mostra a aba de ajustes (tecla Home). Precisa ser a versão \"with full add-on support\".",
+      "install_steps": [
+        "Baixe em https://reshade.me a versão \"with full add-on support\" (o instalador avisa que é para jogos single-player).",
+        "Abra o instalador e escolha SandFall-Win64-Shipping.exe em Expedition 33/Sandfall/Binaries/Win64.",
+        "Escolha a API DirectX 10/11/12.",
+        "Na lista de efeitos, você pode desmarcar tudo: o SenseForge não precisa de shaders. Na lista de add-ons, nada é obrigatório."
+      ]
+    }
+  ],
+  "requirements": [
+    "Windows 10 ou 11 (64 bits)",
+    "Clair Obscur: Expedition 33 na Steam",
+    "Controle DualSense (PS5). Por cabo USB para tudo funcionar; por Bluetooth, gatilhos e lightbar funcionam, mas sem HD haptics e sem alto-falante",
+    "ReShade 6.8+ com suporte a add-ons (passo a passo abaixo)"
+  ],
+  "features": [
+    "Parry: lightbar dourada, motores e vibração nos gatilhos",
+    "QTE perfeito: pulso branco",
+    "Esquiva, golpe recebido, tiro da mira livre e ataque na exploração com cores próprias na lightbar",
+    "R2 com trava no combate e L2 com resistência na mira livre",
+    "Aba SenseForge no overlay do ReShade (tecla Home): presets, perfis Fraco/Médio/Forte e ajuste por efeito"
+  ],
+  "performance": {
+    "measured": false,
+    "summary": "Ainda não medido com números. O SenseForge roda numa thread própria a 50 Hz e não toca na renderização; a medição A/B (vanilla vs MOD) entra na próxima versão deste guia.",
+    "notes": [
+      "No boot há uma espera de 15 s antes de o SenseForge ligar, de propósito, para não disputar recursos com o carregamento do jogo.",
+      "O pacote não faz dumps de objetos do UE4SS no boot (eles causavam um engasgo de alguns segundos e só servem a quem desenvolve)."
+    ]
+  },
+  "known_issues": [
+    {"title": "Dois SenseForge na pasta", "detail": "Se existir um senseforge.addon64 antigo junto do senseforge.expedition-33.addon64, o ReShade carrega os dois e aparecem duas abas. Apague o antigo."},
+    {"title": "DSX, DualSenseX, DualSenseY e DS4Windows", "detail": "Ferramentas que assumem o controle podem brigar com o SenseForge pelos gatilhos e pela lightbar. Feche-as enquanto joga."},
+    {"title": "Steam Input", "detail": "Pode continuar ligado; o SenseForge fala com o controle direto por HID. Se a lightbar piscar com a cor da Steam, desative o \"Suporte a PlayStation\" só para este jogo."},
+    {"title": "Outros mods UE4SS", "detail": "Funcionam juntos, desde que o mods.txt mantenha SenseForgeBridge : 1. Mods que reinstalem outra versão do UE4SS podem quebrar a ponte de eventos."},
+    {"title": "Overlays (RTSS, NVIDIA, Discord)", "detail": "Compatíveis: testado com RTSS e overlay da NVIDIA ativos."},
+    {"title": "Bluetooth", "detail": "Sem HD haptics e sem alto-falante (o Windows só expõe os 4 canais de áudio do DualSense por USB)."}
+  ],
+  "guide_body": "mods/expedition-33/guide.md",
+  "credits": "MOD por Pedro Alves · SenseForge"
+}

@@ -1,0 +1,79 @@
+# SF-15: build + tests + manifest validation + a package of EVERY MOD
+# (draft or ready) on each PR and on main, so a MOD in development breaks
+# the build early. The zips are kept as workflow artifacts only; nothing is
+# published from here.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache third-party sources
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\senseforge\third_party
+          key: third-party-${{ hashFiles('tools/fetch_third_party.sh', 'runtime-asi/third_party_patches/**') }}
+
+      - name: Fetch third-party (pinned)
+        shell: bash
+        run: bash tools/fetch_third_party.sh
+
+      - name: Build runtime (Release)
+        shell: bash
+        run: |
+          cmake -S runtime-asi -B runtime-asi/build
+          cmake --build runtime-asi/build --config Release
+
+      - name: Unit tests
+        shell: bash
+        run: ctest --test-dir runtime-asi/build -C Release --output-on-failure
+
+      - name: Validate MOD manifests
+        shell: bash
+        run: |
+          for slug in $(python -I tools/mods/package_mod.py --list); do
+            for manifest in $(python -I -c "import json,sys; m=json.load(open('mods/'+sys.argv[1]+'/mod.json',encoding='utf-8')); print(' '.join(f['from'] for f in m['files'] if f['from'].endswith('.sense.json')))" "$slug"); do
+              echo "== $slug: $manifest"
+              runtime-asi/build/Release/sf_manifest_check.exe "$manifest"
+            done
+          done
+
+      - name: Cache MOD dependencies
+        uses: actions/cache@v4
+        with:
+          path: .cache/mod-deps
+          key: mod-deps-${{ hashFiles('mods/*/mod.json') }}
+
+      - name: Package every MOD
+        shell: bash
+        run: |
+          for slug in $(python -I tools/mods/package_mod.py --list); do
+            build_dir="$(bash tools/mods/build_mod.sh "$slug" | tail -n 1)"
+            python -I tools/mods/package_mod.py "$slug" --build-dir "$build_dir"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: senseforge-mods
+          path: dist/
+          retention-days: 14

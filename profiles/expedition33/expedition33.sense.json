@@ -1,0 +1,198 @@
+{
+  "schema_version": "1.0",
+  "game_metadata": {
+    "game_id": "expedition33",
+    "title": "Clair Obscur: Expedition 33",
+    "executable": "SandFall-Win64-Shipping.exe",
+    "engine": "Unreal Engine 5 (UE4SS runtime mod)",
+    "graphics_api": "D3D12"
+  },
+  "memory_Bindings": {
+    "e33_menu_open": {
+      "module": "SandFall-Win64-Shipping.exe",
+      "base_rva": 0,
+      "pointer_offsets": [],
+      "type": "uint8",
+      "expected_range": [0.0, 1.0]
+    },
+    "e33_in_combat": {
+      "module": "SandFall-Win64-Shipping.exe",
+      "base_rva": 0,
+      "pointer_offsets": [],
+      "type": "uint8",
+      "expected_range": [0.0, 1.0]
+    },
+    "e33_gradient_charging": {
+      "module": "SandFall-Win64-Shipping.exe",
+      "base_rva": 0,
+      "pointer_offsets": [],
+      "type": "uint8",
+      "expected_range": [0.0, 1.0]
+    },
+    "e33_free_aim": {
+      "module": "SandFall-Win64-Shipping.exe",
+      "base_rva": 0,
+      "pointer_offsets": [],
+      "type": "uint8",
+      "expected_range": [0.0, 1.0]
+    }
+  },
+  "states": [
+    {
+      "id": "menu_moment",
+      "category": "ui",
+      "priority": 100,
+      "condition": "e33_menu_open == 1",
+      "haptics_mute": true,
+      "left_trigger": {"mode": "off"},
+      "right_trigger": {"mode": "off"}
+    },
+    {
+      "id": "gradient_charge",
+      "category": "combat",
+      "priority": 90,
+      "condition": "e33_gradient_charging == 1",
+      "haptics_mute": false,
+      "left_trigger": {"mode": "off"},
+      "right_trigger": {
+        "mode": "bow_elastic_scaled",
+        "start_position": 1,
+        "end_position": 8,
+        "base_force": 2,
+        "max_force": 7,
+        "full_draw_vibration_hz": 8,
+        "full_draw_threshold": 0.95
+      }
+    },
+    {
+      "id": "free_aim",
+      "category": "combat",
+      "priority": 80,
+      "condition": "e33_free_aim == 1",
+      "haptics_mute": false,
+      "left_trigger": {
+        "mode": "resistance",
+        "start_position": 1,
+        "end_position": 6,
+        "force": 5
+      },
+      "right_trigger": {"mode": "off"}
+    },
+    {
+      "id": "combat",
+      "category": "combat",
+      "priority": 70,
+      "condition": "e33_in_combat == 1",
+      "haptics_mute": false,
+      "left_trigger": {"mode": "off"},
+      "right_trigger": {
+        "mode": "rigid_section",
+        "start_position": 2,
+        "end_position": 7,
+        "force": 5
+      }
+    },
+    {
+      "id": "exploration",
+      "category": "movement",
+      "priority": 10,
+      "condition": "e33_menu_open == 0",
+      "haptics_mute": false,
+      "left_trigger": {"mode": "off"},
+      "right_trigger": {"mode": "off"}
+    }
+  ],
+  "audio_event_triggers": [],
+  "event_effects": [
+    {
+      "id": "parry",
+      "lightbar_rgb": [255, 215, 0],
+      "motor_left": 220,
+      "motor_right": 140,
+      "trigger_amplitude": 6,
+      "trigger_frequency_hz": 45,
+      "duration_ms": 350
+    },
+    {
+      "id": "qte_perfect",
+      "lightbar_rgb": [255, 250, 235],
+      "motor_left": 120,
+      "motor_right": 120,
+      "trigger_amplitude": 3,
+      "trigger_frequency_hz": 30,
+      "duration_ms": 200
+    },
+    {
+      "id": "gradient",
+      "lightbar_rgb": [90, 200, 255],
+      "motor_left": 120,
+      "motor_right": 60,
+      "trigger_amplitude": 0,
+      "duration_ms": 250
+    },
+    {
+      "id": "dodge",
+      "lightbar_rgb": [150, 90, 255],
+      "motor_left": 160,
+      "motor_right": 90,
+      "trigger_amplitude": 0,
+      "duration_ms": 200
+    },
+    {
+      "id": "hit_taken",
+      "lightbar_rgb": [255, 40, 40],
+      "motor_left": 200,
+      "motor_right": 120,
+      "trigger_amplitude": 0,
+      "duration_ms": 300
+    },
+    {
+      "id": "free_aim_shot",
+      "lightbar_rgb": [90, 160, 255],
+      "motor_left": 140,
+      "motor_right": 70,
+      "trigger_amplitude": 0,
+      "duration_ms": 220
+    },
+    {
+      "id": "explore_attack",
+      "lightbar_rgb": [60, 200, 90],
+      "motor_left": 100,
+      "motor_right": 50,
+      "trigger_amplitude": 0,
+      "duration_ms": 200
+    }
+  ],
+  "ui": {
+    "guide_url": "https://github.com/Pedro-A-D-S/SenseForge-Mods/blob/main/mods/expedition-33.md",
+    "credits": "MOD Expedition 33 por Pedro Alves · SenseForge",
+    "states": {
+      "menu_moment": {"name": "Menus", "hidden": true},
+      "exploration": {"name": "Exploração", "hidden": true},
+      "combat": {"name": "Combate (R2)", "description": "R2 com trava rígida durante as batalhas por turno.", "order": 1},
+      "free_aim": {"name": "Mira livre (L2)", "description": "Resistência no L2 enquanto mira, na exploração e no combate.", "order": 2},
+      "gradient_charge": {"name": "Carga do Gradient (R2)", "description": "R2 elástico durante a carga do ataque Gradient.", "order": 3}
+    },
+    "events": {
+      "parry": {"name": "Parry", "description": "Lightbar dourada, motores e vibração nos gatilhos ao aparar um golpe.", "order": 1},
+      "qte_perfect": {"name": "QTE perfeito", "description": "Pulso branco ao acertar o tempo perfeito de um ataque.", "order": 2},
+      "dodge": {"name": "Esquiva", "description": "Lightbar roxa ao esquivar com sucesso.", "order": 3},
+      "gradient": {"name": "Contra-ataque Gradient", "order": 4},
+      "hit_taken": {"name": "Golpe recebido", "description": "Lightbar vermelha quando um personagem do grupo é atingido.", "order": 5},
+      "free_aim_shot": {"name": "Tiro da mira livre", "description": "Lightbar azul a cada disparo com a mira livre.", "order": 6},
+      "explore_attack": {"name": "Ataque na exploração", "description": "Lightbar verde ao golpear objetos ou inimigos fora do combate.", "order": 7}
+    },
+    "categories": {
+      "ui": {"name": "Menus e mapa"},
+      "combat": {"name": "Combate"},
+      "movement": {"name": "Exploração"}
+    }
+  },
+  "lighting_rules": {
+    "lightbar_mode": "health_and_adrenaline",
+    "player_leds_binding": "",
+    "high_health_rgb": [255, 214, 130],
+    "low_health_rgb": [255, 40, 40],
+    "adrenaline_full_pulse_rgb": [255, 248, 184]
+  }
+}

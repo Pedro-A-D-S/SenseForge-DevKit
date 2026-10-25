@@ -1,0 +1,24 @@
+; version_proxy.def — export table of the version.dll proxy (SF-3).
+; The 17 symbols are the MASM thunks from version_thunks.asm.
+; NEVER link version.lib into this target — calls must only reach the real
+; System32 DLL through g_versionProcs.
+
+LIBRARY version
+EXPORTS
+    GetFileVersionInfoA
+    GetFileVersionInfoByHandle
+    GetFileVersionInfoExA
+    GetFileVersionInfoExW
+    GetFileVersionInfoSizeA
+    GetFileVersionInfoSizeExA
+    GetFileVersionInfoSizeExW
+    GetFileVersionInfoSizeW
+    GetFileVersionInfoW
+    VerFindFileA
+    VerFindFileW
+    VerInstallFileA
+    VerInstallFileW
+    VerLanguageNameA
+    VerLanguageNameW
+    VerQueryValueA
+    VerQueryValueW
