@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import shutil
 import sys
 import tempfile
@@ -38,13 +39,54 @@ MODS = ROOT / "mods"
 DEFAULT_BUILD = ROOT / "runtime-asi" / "build" / "Release"
 REQUIRED = ("slug", "name", "game", "version", "status", "install_dir",
             "files", "dependencies")
+# SF-20: the slug names folders, zips, tags and public URLs.
+SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 
 
 class ModError(Exception):
     """A mod.json that cannot be packaged; the message says why."""
 
 
+def contained(base: Path, relative: str) -> bool:
+    """True when `relative` is a plain relative path that stays under base."""
+    if not relative or Path(relative).is_absolute() or "\\" in relative             or ":" in relative:
+        return False
+    target = (base / relative).resolve()
+    return target == base.resolve() or base.resolve() in target.parents
+
+
+def check_paths(mod: dict, path: Path) -> None:
+    """SF-20: what a mod.json can read from the repo and write into the zip.
+
+    files[].from: "build:<file name>" or a repo file outside .git;
+    files[].to: a path inside the zip; guide_body: a file in mods/<slug>/.
+    """
+    for entry in mod["files"]:
+        source, dest = entry.get("from", ""), entry.get("to", "")
+        if source.startswith("build:"):
+            name = source[len("build:"):]
+            if not name or "/" in name or "\\" in name or name in (".", ".."):
+                raise ModError(f"{path}: bad build file '{source}'")
+        elif not contained(ROOT, source) or ".git" in Path(source).parts:
+            raise ModError(f"{path}: files[].from '{source}' leaves the repo")
+        if not contained(Path("stage"), dest) or dest in (".", ""):
+            raise ModError(f"{path}: files[].to '{dest}' leaves the package")
+    guide = mod.get("guide_body")
+    folder = MODS / mod["slug"]
+    if guide and not (contained(ROOT, guide)
+                      and folder.resolve() in (ROOT / guide).resolve().parents):
+        raise ModError(f"{path}: guide_body must be a file in mods/{mod['slug']}/")
+    for dep in mod["dependencies"]:
+        if not re.match(r"^[a-z0-9][a-z0-9_-]{0,63}$", str(dep.get("id", ""))):
+            raise ModError(f"{path}: dependency id {dep.get('id')!r} must be a plain name")
+        if dep.get("bundle") and not str(dep.get("url", "")).startswith("https://"):
+            raise ModError(f"{path}: bundled dependency '{dep.get('id')}' "
+                           "must use an https url")
+
+
 def load_mod(slug: str) -> dict:
+    if not SLUG_RE.match(slug or ""):
+        raise ModError(f"invalid slug '{slug}' (use a-z, 0-9 and '-')")
     path = MODS / slug / "mod.json"
     if not path.is_file():
         raise ModError(f"{path} not found")
@@ -63,6 +105,7 @@ def load_mod(slug: str) -> dict:
         if dep.get("bundle") and not (dep.get("url") and dep.get("sha256")):
             raise ModError(f"{path}: bundled dependency '{dep.get('id')}' "
                            "needs url and sha256")
+    check_paths(mod, path)
     return mod
 
 
@@ -129,13 +172,22 @@ def extract_dep(archive: Path, dep: dict, stage: Path) -> list[str]:
     return written
 
 
+def ini_header(line: str) -> str | None:
+    """Section name as the runtime parser sees it (ini_config.cpp: a ';' at
+    line start or after whitespace starts a comment), or None."""
+    stripped = re.split(r"(?:^|(?<=[ 	]));", line, maxsplit=1)[0].strip()
+    if stripped.startswith("[") and stripped.endswith("]"):
+        return stripped[1:-1].strip()
+    return None
+
+
 def strip_ini(text: str, sections: list[str]) -> str:
     drop = {s.lower() for s in sections}
     out, skipping = [], False
     for line in text.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("[") and stripped.endswith("]"):
-            skipping = stripped[1:-1].strip().lower() in drop
+        header = ini_header(line)
+        if header is not None:
+            skipping = header.lower() in drop
         if not skipping:
             out.append(line)
     while out and not out[-1].strip():

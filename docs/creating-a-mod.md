@@ -82,3 +82,31 @@ Com `ue4ss_dumps=1` na seção `[Dev]`, o mod Lua do E33 gera no boot o `UE4SS_O
    ```
 
 4. Siga o checklist em [`mods/README.md`](../mods/README.md) e publique com a tag `mod/<slug>/v<versão>`.
+
+## 5. Regras que o pacote e a publicação conferem
+
+O `package_mod.py`, o `render_docs.py` e o `tools/security/preflight.py` (rodado no CI de todo PR) recusam um `mod.json` que sair destas regras. Elas existem porque o zip é baixado por outras pessoas e passa pelo canal oficial de MODs.
+
+| Campo | Regra | Mensagem quando falha |
+|---|---|---|
+| `slug` | igual ao nome da pasta e no formato `^[a-z0-9][a-z0-9-]{0,63}$` (minúsculas, números e hífen) | `invalid slug` ou `slug ... != folder` |
+| `files[].from` | caminho relativo dentro do repositório (nada de `..`, caminho absoluto, `\`, `:` ou `.git`), ou `build:<arquivo>` sem pastas | `files[].from ... leaves the repo` |
+| `files[].to` | caminho relativo dentro do zip, nunca vazio | `files[].to ... leaves the package` |
+| `guide_body` | um arquivo dentro de `mods/<slug>/` | `guide_body must be a file in mods/<slug>/` |
+| `dependencies[].id` | nome simples: `^[a-z0-9][a-z0-9_-]{0,63}$` (vira nome de pasta no cache) | `dependency id ... must be a plain name` |
+| `dependencies[].url` (`bundle: true`) | `https://` e com `sha256` | `must use an https url` |
+
+Além do `mod.json`, o preflight confere o que vai no zip:
+
+- **`senseforge_user.ini`**: com `strip_ini_sections: ["Dev"]`, o pacote não leva `agent_autostart` nem `creator_tools` ligados. O cabeçalho `[Dev] ; comentário` também é removido, do mesmo jeito que o runtime lê o arquivo.
+- **`mods.txt` do UE4SS**: `CheatManagerEnablerMod`, `ConsoleCommandsMod` e `ConsoleEnablerMod` ficam em `: 0`. O guia promete o console desligado.
+- **Manifesto**: ids de estados, categorias e eventos só com letras, números, `_`, `.` e `-` (até 64 caracteres), e `ui.guide_url` com `https://`.
+- **Segredos**: nenhum arquivo versionado pode conter token, chave privada ou credencial.
+- **Workflows**: ações fixadas por commit SHA e nenhum `${{ inputs.* }}` colado dentro de um script.
+
+Para rodar o mesmo gate antes de abrir o PR:
+
+```bash
+python -I tools/security/preflight.py
+python -I tools/mods/test_package_mod.py
+```

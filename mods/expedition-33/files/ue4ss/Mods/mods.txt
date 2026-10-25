@@ -1,6 +1,8 @@
-CheatManagerEnablerMod : 1
-ConsoleCommandsMod : 1
-ConsoleEnablerMod : 1
+; SF-20: console e cheat manager do UE4SS desligados no pacote (o guia
+; promete o console desligado; a ponte do SenseForge nao precisa deles).
+CheatManagerEnablerMod : 0
+ConsoleCommandsMod : 0
+ConsoleEnablerMod : 0
 SplitScreenMod : 0
 LineTraceMod : 0
 BPML_GenericFunctions : 1

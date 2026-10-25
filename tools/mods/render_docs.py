@@ -22,7 +22,14 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import sys
 from pathlib import Path
+
+# SF-20: the same mod.json checks as packaging (slug, contained paths,
+# guide_body inside mods/<slug>/). Explicit path: python -I does not add the
+# script folder to sys.path.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from package_mod import ModError, load_mod  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 MODS = ROOT / "mods"
@@ -41,7 +48,7 @@ def download_url(mod: dict) -> str:
 def load_all() -> list[dict]:
     mods = []
     for path in sorted(MODS.glob("*/mod.json")):
-        mods.append(json.loads(path.read_text(encoding="utf-8")))
+        mods.append(load_mod(path.parent.name))
     return mods
 
 
@@ -177,7 +184,11 @@ def main() -> int:
                         default=dt.date.today().isoformat())
     args = parser.parse_args()
 
-    mods = load_all()
+    try:
+        mods = load_all()
+    except ModError as error:
+        print(f"render_docs: {error}", file=sys.stderr)
+        return 1
     dates_file = args.out / "mods" / "release-dates.json"
     dates = {}
     if dates_file.is_file():
