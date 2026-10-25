@@ -22,14 +22,22 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
 
+      - name: Security preflight
+        shell: bash
+        run: python -I tools/security/preflight.py
+
+      - name: Packaging tests
+        shell: bash
+        run: python -I tools/mods/test_package_mod.py
+
       - name: Cache third-party sources
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~\AppData\Local\senseforge\third_party
           key: third-party-${{ hashFiles('tools/fetch_third_party.sh', 'runtime-asi/third_party_patches/**') }}
@@ -59,7 +67,7 @@ jobs:
           done
 
       - name: Cache MOD dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: .cache/mod-deps
           key: mod-deps-${{ hashFiles('mods/*/mod.json') }}
@@ -72,7 +80,7 @@ jobs:
             python -I tools/mods/package_mod.py "$slug" --build-dir "$build_dir"
           done
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: senseforge-mods
           path: dist/

@@ -10,8 +10,12 @@
 # to a native tool must be a native mixed path (C:/...), enforced below via
 # cygpath -m.
 #
-# Reproducible: exact refs below; every run writes resolved HEADs to
-# $SENSEFORGE_THIRD_PARTY/VERSIONS.md.
+# Reproducible: every dependency is pinned by a full commit SHA (the upstream
+# tag is only a comment) and fetched by that SHA. After the fetch, and for a
+# tree that already exists (local or restored from the CI cache), HEAD must
+# equal the pin or the tree is fetched again; a mismatch after that fails the
+# build. SF-20: a moved or SHA-named upstream tag can no longer change what is
+# compiled into the published add-on. Resolved HEADs go to VERSIONS.md.
 
 set -euo pipefail
 
@@ -21,18 +25,18 @@ TP="${SENSEFORGE_THIRD_PARTY:-$(cygpath -m "$LOCALAPPDATA")/senseforge/third_par
 TP="$(cygpath -m "$TP")"
 mkdir -p "$TP"
 
-# name|repo|pinned ref (branch, tag or commit)
+# name|repo|pinned commit (40-hex SHA; the upstream tag in the comment)
 DEPS=(
   "minhook|https://github.com/TsudaKageyu/minhook.git|8af6b4acae5a9388fd742b56fa79ece89d96f823"
-  "portaudio|https://github.com/PortAudio/portaudio.git|v19.7.0"
+  "portaudio|https://github.com/PortAudio/portaudio.git|147dd722548358763a8b649b3e4b41dfffbcfbb6"  # v19.7.0
   "dualsensitive|https://github.com/tpetsas/dualsensitive.git|ec87b414875ef97aab5cb05aeb2f3005456ea0ef"
   "imgui|https://github.com/ocornut/imgui.git|4be0b47ecc0edd535a40a79f6ceb6f1ac5936483"
   "vgmstream|https://github.com/vgmstream/vgmstream.git|f7f764155b227f683adbab25402fe8f2be0b2ec2"
   "wwiser|https://github.com/bnnm/wwiser.git|08e937b649bc7007c234bbd59e34a41d5eef3b38"
-  "nlohmann_json|https://github.com/nlohmann/json.git|v3.12.0"
+  "nlohmann_json|https://github.com/nlohmann/json.git|55f93686c01528224f448c19128836e7df245f72"  # v3.12.0
   # Headers only: ReShade 6.8 reshade_overlay.hpp requires imgui.h 19250 (docking)
   # (the senseforge.<game>.addon64 panel draws through ReShade's ImGui).
-  "imgui_reshade|https://github.com/ocornut/imgui.git|v1.92.5-docking"
+  "imgui_reshade|https://github.com/ocornut/imgui.git|3912b3d9a9c1b3f17431aebafd86d2f40ee6e59c"  # v1.92.5-docking
 )
 
 {
@@ -44,21 +48,27 @@ for entry in "${DEPS[@]}"; do
   IFS='|' read -r name repo ref <<< "$entry"
   dest="$TP/$name"
 
-  if [ -d "$dest/.git" ]; then
-    echo "[$name] present — skipping"
+  if ! [[ "$ref" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "[$name] pin '$ref' is not a full commit SHA" >&2
+    exit 1
+  fi
+
+  if [ -d "$dest/.git" ] && [ "$(git -C "$dest" rev-parse HEAD 2>/dev/null)" = "$ref" ]; then
+    echo "[$name] present at pinned commit — skipping"
   else
-    echo "[$name] cloning $repo @ $ref"
+    echo "[$name] fetching $repo @ $ref"
     rm -rf "$dest"
-    if git ls-remote --exit-code "$repo" "refs/tags/$ref" >/dev/null 2>&1; then
-      git clone --quiet --depth 1 --branch "$ref" "$repo" "$dest"
-    else
-      git clone --quiet --depth 1 "$repo" "$dest"
-      git -C "$dest" fetch --quiet --depth 1 origin "$ref"
-      git -C "$dest" checkout --quiet FETCH_HEAD
-    fi
+    git init --quiet "$dest"
+    git -C "$dest" remote add origin "$repo"
+    git -C "$dest" fetch --quiet --depth 1 origin "$ref"
+    git -C "$dest" checkout --quiet FETCH_HEAD
   fi
 
   head="$(git -C "$dest" rev-parse HEAD)"
+  if [ "$head" != "$ref" ]; then
+    echo "[$name] HEAD $head does not match the pinned commit $ref" >&2
+    exit 1
+  fi
   echo "| $name | $repo | $ref | $head |" >> "$TP/VERSIONS.md"
 
   # Vendored-drift fixes (see runtime-asi/third_party_patches/README):
