@@ -76,6 +76,28 @@ int main() {
     assert(reloaded.GetBool("General", "enable_mod") == false);
     assert(reloaded.GetFloat("ControllerSpeaker", "speaker_volume") == 0.75);
 
+    // SF-22: Set refuses anything that would change the file structure on
+    // the next Load, and leaves the document untouched.
+    {
+        senseforge::IniDocument evil;
+        assert(!evil.Set("States", "x\n[Dev]\nagent_autostart=1\n;", "1"));
+        assert(!evil.Set("States", "a=b", "1"));
+        assert(!evil.Set("States", "[Dev]", "1"));
+        assert(!evil.Set("States", "a;b", "1"));
+        assert(!evil.Set("States", "", "1"));
+        assert(!evil.Set("States", "k", "1\n[Dev]"));
+        assert(!evil.Set("States", "k", "1\r"));
+        assert(!evil.Set("St[ates", "k", "1"));
+        assert(!evil.Set("St\nates", "k", "1"));
+        assert(!evil.Set("", "k", "1"));
+        assert(evil.Sections().empty());
+        // Ordinary keys, dotted preset keys and values with '=' still work.
+        assert(evil.Set("States", "combat_enabled", "true"));
+        assert(evil.Set("Preset.1", "States.combat_enabled", "0.5"));
+        assert(evil.Set("Events", "file", "a=b.ndjson"));
+        assert(evil.GetString("Events", "file") == "a=b.ndjson");
+    }
+
     std::filesystem::remove(std::filesystem::temp_directory_path() /
                             "sf_test_user.ini");
     std::filesystem::remove(saved);

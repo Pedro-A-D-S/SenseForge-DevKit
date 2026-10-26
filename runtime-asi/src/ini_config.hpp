@@ -29,7 +29,11 @@ public:
     double GetFloat(const std::string& section, const std::string& key,
                     double fallback = 0.0) const;
 
-    void Set(const std::string& section, const std::string& key,
+    // SF-22: returns false (and writes nothing) when the section, key or
+    // value would change the file structure on the next Load: a CR/LF, or a
+    // '[', ']', '=' or ';' in a key, or a bracket in a section name. Ids that
+    // come from a game manifest reach this call, so it must not trust them.
+    bool Set(const std::string& section, const std::string& key,
              const std::string& value);
     void SetInt(const std::string& section, const std::string& key,
                 long long value) {

@@ -34,6 +34,10 @@ std::string StripComment(const std::string& line) {
     return line;
 }
 
+bool HasAny(const std::string& text, const char* chars) {
+    return text.find_first_of(chars) != std::string::npos;
+}
+
 }  // namespace
 
 bool IniDocument::Load(const std::filesystem::path& path) {
@@ -136,9 +140,14 @@ double IniDocument::GetFloat(const std::string& section,
     }
 }
 
-void IniDocument::Set(const std::string& section, const std::string& key,
+bool IniDocument::Set(const std::string& section, const std::string& key,
                       const std::string& value) {
+    if (section.empty() || HasAny(section, "\r\n[]") || key.empty() ||
+        HasAny(key, "\r\n[]=;") || HasAny(value, "\r\n")) {
+        return false;
+    }
     sections_[section][key] = value;
+    return true;
 }
 
 void IniDocument::SetFloat(const std::string& section, const std::string& key,

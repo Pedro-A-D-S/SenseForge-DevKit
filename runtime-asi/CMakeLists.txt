@@ -287,6 +287,8 @@ function(sf_add_test name)
 endfunction()
 
 sf_add_test(sf_sanity_tests    tests/test_sanity.cpp)
+sf_add_test(sf_safe_tests      tests/test_safe_util.cpp)
+sf_add_test(sf_pipe_tests      tests/test_ipc_pipe_client.cpp src/ipc_pipe_client.cpp)
 sf_add_test(sf_ini_tests       tests/test_ini.cpp src/ini_config.cpp)
 sf_add_test(sf_json_tests      tests/test_sense_json.cpp src/sense_json.cpp src/memory_scanner.cpp)
 sf_add_test(sf_scanner_tests   tests/test_memory_scanner.cpp src/memory_scanner.cpp)

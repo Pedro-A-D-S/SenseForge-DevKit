@@ -180,6 +180,26 @@ int main() {
         assert(loaded.Equals(slot2));  // failed load leaves it untouched
     }
 
+    // SF-22: a manifest id that carries ini syntax must not write a section
+    // of its own. The unsafe entries are dropped; the safe ones persist.
+    {
+        const std::string evil = "x\n[Dev]\nagent_autostart=1\n;";
+        IniDocument doc;
+        doc.Set("Dev", "agent_autostart", "0");
+        OverlaySettings s;
+        s.Load(doc, {"melee_combat", evil}, {"combat", evil}, {"parry", evil});
+        s.ApplyTo(doc);
+        s.SavePreset(doc, 1);
+        const auto evil_path = dir / "sf_test_overlay_evil.ini";
+        assert(doc.Save(evil_path));
+        IniDocument back;
+        assert(back.Load(evil_path));
+        assert(back.GetBool("Dev", "agent_autostart", true) == false);
+        assert(!back.HasKey("Dev", "x"));
+        assert(back.HasKey("States", "combat_enabled"));
+        std::filesystem::remove(evil_path);
+    }
+
     // Display names: known pretty, unknown raw.
     assert(CategoryDisplayName("melee_combat") ==
            "Combate Corpo a Corpo");

@@ -107,6 +107,14 @@ void ApplySonyStyle() {
 
 bool ComboSelector(const char* label, int* value, const char* const* items,
                    int item_count) {
+    // SF-22: *value comes from the ini (clamped by Load, but this widget is
+    // reachable with any int) — never index items[] out of range.
+    if (value == nullptr || items == nullptr || item_count <= 0) {
+        return false;
+    }
+    if (*value < 0 || *value >= item_count) {
+        *value = 0;
+    }
     const char* preview = items[*value];
     if (!ImGui::BeginCombo(label, preview)) {
         return false;
@@ -149,7 +157,9 @@ bool SonyOverlay::Install(const std::filesystem::path& ini_path) {
     // so hooking this one hooks the game's Present as well.
     HMODULE d3d11_module = GetModuleHandleA("d3d11.dll");
     if (d3d11_module == nullptr) {
-        d3d11_module = LoadLibraryA("d3d11.dll");
+        // SF-22: system copy only; a d3d11.dll next to the game must not win.
+        d3d11_module = LoadLibraryExW(L"d3d11.dll", nullptr,
+                                      LOAD_LIBRARY_SEARCH_SYSTEM32);
     }
     if (d3d11_module == nullptr) {
         SF_OVERLAY_TRACE("d3d11.dll not loadable");

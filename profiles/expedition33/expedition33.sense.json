@@ -105,6 +105,16 @@
   "audio_event_triggers": [],
   "event_effects": [
     {
+      "id": "item_pickup",
+      "duration_ms": 260,
+      "speaker_tone": {"frequency_hz": 1320, "second_hz": 1980, "duration_ms": 260, "gain": 0.9}
+    },
+    {
+      "id": "ui_tick",
+      "duration_ms": 60,
+      "speaker_tone": {"frequency_hz": 2400, "duration_ms": 45, "gain": 0.5}
+    },
+    {
       "id": "parry",
       "lightbar_rgb": [255, 215, 0],
       "motor_left": 220,
@@ -180,7 +190,9 @@
       "gradient": {"name": "Contra-ataque Gradient", "order": 4},
       "hit_taken": {"name": "Golpe recebido", "description": "Lightbar vermelha quando um personagem do grupo é atingido.", "order": 5},
       "free_aim_shot": {"name": "Tiro da mira livre", "description": "Lightbar azul a cada disparo com a mira livre.", "order": 6},
-      "explore_attack": {"name": "Ataque na exploração", "description": "Lightbar verde ao golpear objetos ou inimigos fora do combate.", "order": 7}
+      "explore_attack": {"name": "Ataque na exploração", "description": "Lightbar verde ao golpear objetos ou inimigos fora do combate.", "order": 7},
+      "item_pickup": {"name": "Item recebido (speaker)", "description": "Ding no alto-falante do controle ao receber um item ou Lumina no inventário.", "order": 8},
+      "ui_tick": {"name": "Navegação de menu (speaker)", "description": "Tique no alto-falante do controle ao mover o cursor nos menus.", "order": 9}
     },
     "categories": {
       "ui": {"name": "Menus e mapa"},

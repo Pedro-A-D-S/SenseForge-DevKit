@@ -1,0 +1,23 @@
+* text=auto
+
+*.sh   text eol=lf
+*.md   text
+*.cpp  text
+*.hpp  text
+*.rs   text
+*.toml text
+*.json text
+*.ini  text
+*.yml  text
+*.yaml text
+*.css  text
+*.html text
+*.tsx  text
+*.ts   text
+
+*.png binary
+*.wav binary
+*.wem binary
+*.zip binary
+*.asi binary
+*.dll binary

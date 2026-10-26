@@ -30,6 +30,15 @@ struct Voice {
     Bus bus = Bus::Speaker;  // which pair of device channels this voice feeds
 };
 
+// SF-12b: mono blip for the controller speaker. Sine at `frequency_hz` (plus an
+// optional second partial at `second_hz`) with a 2ms attack and an
+// exponential decay to ~-48dB at the end. Out-of-range parameters are clamped
+// (frequency 100..8000, duration 20..1000ms, gain 0..1); frequency 0 yields an
+// empty buffer. Peak is `gain`.
+std::vector<float> SynthesizeTone(int frequency_hz, int duration_ms,
+                                  double gain, int second_hz,
+                                  int sample_rate = 48000);
+
 class MixerCore {
 public:
     void Reset();

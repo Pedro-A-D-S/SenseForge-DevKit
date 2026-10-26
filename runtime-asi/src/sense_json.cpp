@@ -218,6 +218,16 @@ bool ParseManifest(const std::filesystem::path& path, Manifest& out,
                 effect.trigger_frequency_hz =
                     e.value("trigger_frequency_hz", 0);
                 effect.duration_ms = e.value("duration_ms", 300);
+                if (auto tone = e.find("speaker_tone");
+                    tone != e.end() && tone->is_object()) {
+                    effect.speaker_tone.frequency_hz =
+                        tone->value("frequency_hz", 0);
+                    effect.speaker_tone.duration_ms =
+                        tone->value("duration_ms", 120);
+                    effect.speaker_tone.gain = tone->value("gain", 0.5);
+                    effect.speaker_tone.second_hz =
+                        tone->value("second_hz", 0);
+                }
                 parsed.event_effects.push_back(std::move(effect));
             }
         }
@@ -303,6 +313,28 @@ bool ParseManifest(const std::filesystem::path& path, Manifest& out,
     }
 }
 
+namespace {
+
+// SF-22: ids become ini keys (OverlaySettings) and travel in JSON lines to
+// Studio, so they stay plain ASCII names. ASCII checks on purpose: the C
+// locale functions would make this depend on the host settings.
+bool IsPlainId(const std::string& id) {
+    if (id.empty() || id.size() > 64) {
+        return false;
+    }
+    for (const char c : id) {
+        const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                        (c >= '0' && c <= '9') || c == '_' || c == '.' ||
+                        c == '-';
+        if (!ok) {
+            return false;
+        }
+    }
+    return true;
+}
+
+}  // namespace
+
 std::vector<std::string> ValidateManifest(const Manifest& manifest) {
     std::vector<std::string> problems;
     const auto binding_exists = [&](const std::string& id) {
@@ -315,6 +347,10 @@ std::vector<std::string> ValidateManifest(const Manifest& manifest) {
         }
         if (effect.id.empty()) {
             problems.push_back("event_effect: empty id");
+        } else if (!IsPlainId(effect.id)) {
+            // The id is not echoed: it is exactly what must not be trusted.
+            problems.push_back(
+                "event_effect: id must use only A-Z a-z 0-9 _ . - (max 64)");
         }
         if (effect.duration_ms < 50 || effect.duration_ms > 5000) {
             problems.push_back("event_effect '" + effect.id +
@@ -338,6 +374,14 @@ std::vector<std::string> ValidateManifest(const Manifest& manifest) {
         }
     }
     for (const auto& state : manifest.states) {
+        if (!state.id.empty() && !IsPlainId(state.id)) {
+            problems.push_back(
+                "state: id must use only A-Z a-z 0-9 _ . - (max 64)");
+        }
+        if (!state.category.empty() && !IsPlainId(state.category)) {
+            problems.push_back(
+                "state: category must use only A-Z a-z 0-9 _ . - (max 64)");
+        }
         if (!state.left_trigger.scale_binding.empty() &&
             !binding_exists(state.left_trigger.scale_binding)) {
             problems.push_back("state '" + state.id +
@@ -349,6 +393,23 @@ std::vector<std::string> ValidateManifest(const Manifest& manifest) {
             problems.push_back("state '" + state.id +
                                "': right scale_binding '" +
                                state.right_trigger.scale_binding + "' missing");
+        }
+        if (state.haptic_loop.present && !state.haptic_loop.file.empty()) {
+            // SF-22: the runtime also refuses to leave the game directory;
+            // this tells the MOD author before the file ever ships.
+            const std::filesystem::path loop(state.haptic_loop.file);
+            bool unsafe = loop.is_absolute() || loop.has_root_name() ||
+                          loop.has_root_directory();
+            for (const auto& part : loop) {
+                if (part == "..") {
+                    unsafe = true;
+                }
+            }
+            if (unsafe) {
+                problems.push_back(
+                    "state: haptic_loop.file must be a relative path inside "
+                    "the game directory");
+            }
         }
         if (state.haptic_loop.present &&
             !state.haptic_loop.gain_binding.empty() &&

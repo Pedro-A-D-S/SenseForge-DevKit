@@ -252,6 +252,75 @@ int main() {
         std::filesystem::remove(bad_ui);
     }
 
+    // ---- SF-12b: speaker_tone on an event effect --------------------------
+    {
+        const auto tone_path = WriteFixture(R"({"states": [], "event_effects": [
+          {"id": "item_pickup",
+           "speaker_tone": {"frequency_hz": 1320, "duration_ms": 260,
+                            "gain": 0.6, "second_hz": 1980}},
+          {"id": "parry", "lightbar_rgb": [255, 215, 0], "motor_left": 10},
+          {"id": "bare"}]})");
+        senseforge::Manifest m;
+        std::string err;
+        assert(senseforge::ParseManifest(tone_path, m, &err));
+        assert(m.event_effects.size() == 3);
+        const auto& pickup = m.event_effects[0];
+        assert(pickup.speaker_tone.frequency_hz == 1320);
+        assert(pickup.speaker_tone.duration_ms == 260);
+        assert(pickup.speaker_tone.gain > 0.59 && pickup.speaker_tone.gain < 0.61);
+        assert(pickup.speaker_tone.second_hz == 1980);
+        // speaker-only: no HID output, so it must not start the flash overlay
+        assert(!senseforge::HasHidOutput(pickup));
+        assert(senseforge::HasHidOutput(m.event_effects[1]));
+        // no speaker_tone -> frequency 0 (silent)
+        assert(m.event_effects[1].speaker_tone.frequency_hz == 0);
+        assert(!senseforge::HasHidOutput(m.event_effects[2]));
+        std::filesystem::remove(tone_path);
+    }
+
+    // SF-22: ids that carry ini or JSON syntax are reported, without the id
+    // being echoed (the messages travel to Studio in hand-built JSON lines).
+    {
+        const auto bad_ids = WriteFixture(
+            R"({"states": [{"id": "bad id", "category": "bad\ncat"}],
+                "event_effects": [{"id": "bad[evt]"}]})");
+        senseforge::Manifest m;
+        std::string err;
+        assert(senseforge::ParseManifest(bad_ids, m, &err));
+        int id_problems = 0;
+        for (const auto& problem : senseforge::ValidateManifest(m)) {
+            if (problem.find("must use only") != std::string::npos) {
+                ++id_problems;
+                assert(problem.find('\n') == std::string::npos);
+                assert(problem.find('[') == std::string::npos);
+                assert(problem.find("bad") == std::string::npos);
+            }
+        }
+        assert(id_problems == 3);  // state id, state category, event id
+        std::filesystem::remove(bad_ids);
+    }
+
+    // SF-22: haptic_loop.file must stay inside the game directory.
+    {
+        const auto loops_path = WriteFixture(R"({"states": [
+          {"id": "ok_rel",  "haptic_loop": {"file": "haptics/bow.wav"}},
+          {"id": "up",      "haptic_loop": {"file": "../x.wav"}},
+          {"id": "up_mid",  "haptic_loop": {"file": "haptics/../../x.wav"}},
+          {"id": "drive",   "haptic_loop": {"file": "C:/x.wav"}},
+          {"id": "rooted",  "haptic_loop": {"file": "/x.wav"}}]})");
+        senseforge::Manifest m;
+        std::string err;
+        assert(senseforge::ParseManifest(loops_path, m, &err));
+        int unsafe_files = 0;
+        for (const auto& problem : senseforge::ValidateManifest(m)) {
+            if (problem.find("haptic_loop.file") != std::string::npos) {
+                ++unsafe_files;
+            }
+        }
+        assert(unsafe_files == 4);  // only the relative, inside path passes
+        std::filesystem::remove(loops_path);
+    }
+
     std::filesystem::remove(path);
     return 0;
 }

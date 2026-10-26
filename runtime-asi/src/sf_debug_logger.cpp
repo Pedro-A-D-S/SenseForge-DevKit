@@ -62,7 +62,10 @@ void WriteCrashDump(EXCEPTION_POINTERS* pointers) {
     if (file == INVALID_HANDLE_VALUE) {
         return;
     }
-    const HMODULE dbghelp = LoadLibraryW(L"dbghelp.dll");
+    // SF-22: system copy only (this runs inside a crashing game process; a
+    // dbghelp.dll planted in the game folder must not be picked up).
+    const HMODULE dbghelp =
+        LoadLibraryExW(L"dbghelp.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
     if (dbghelp != nullptr) {
         using MiniDumpWriteDumpFn =
             BOOL(WINAPI*)(HANDLE, DWORD, HANDLE, MINIDUMP_TYPE,

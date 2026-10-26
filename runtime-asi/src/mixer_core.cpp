@@ -7,6 +7,36 @@
 
 namespace senseforge {
 
+std::vector<float> SynthesizeTone(int frequency_hz, int duration_ms,
+                                  double gain, int second_hz,
+                                  int sample_rate) {
+    if (frequency_hz <= 0 || sample_rate <= 0) {
+        return {};
+    }
+    constexpr double kPi = 3.14159265358979323846;
+    const double f1 = std::clamp(frequency_hz, 100, 8000);
+    const double f2 = second_hz > 0 ? std::clamp(second_hz, 100, 8000) : 0.0;
+    const int ms = std::clamp(duration_ms, 20, 1000);
+    const double g = std::clamp(gain, 0.0, 1.0);
+    const std::size_t count = static_cast<std::size_t>(sample_rate) * ms / 1000;
+    const std::size_t attack = std::max<std::size_t>(1, sample_rate / 500);
+    const double norm = f2 > 0.0 ? 1.0 / 1.6 : 1.0;  // headroom for the partial
+    std::vector<float> out(count);
+    for (std::size_t i = 0; i < count; ++i) {
+        const double t = static_cast<double>(i) / sample_rate;
+        const double progress = static_cast<double>(i) / count;
+        const double decay = std::exp(-5.5 * progress);  // ~ -48dB at the end
+        const double rise =
+            i < attack ? static_cast<double>(i) / attack : 1.0;
+        double v = std::sin(2 * kPi * f1 * t);
+        if (f2 > 0.0) {
+            v += 0.6 * std::sin(2 * kPi * f2 * t);
+        }
+        out[i] = static_cast<float>(g * norm * v * decay * rise);
+    }
+    return out;
+}
+
 void MixerCore::Reset() {
     std::lock_guard<std::mutex> lock(mutex_);
     one_shots_.clear();
