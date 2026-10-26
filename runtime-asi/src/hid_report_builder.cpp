@@ -119,6 +119,16 @@ void BuildUsbReport(const HidOutputCommand& command,
     // event flashes (SF-12b) drive them transiently.
     out[0x03] = command.motor_right;
     out[0x04] = command.motor_left;
+    // SF-12b: controller speaker. The valid flags above (0x20 speaker volume,
+    // 0x80 audio control, flag1 0x80 audio control 2) were set while these
+    // fields stayed 0, which explicitly MUTED the speaker on every report
+    // (debrief 25/10 PID 30472: item_pickup tone reached the mixer, nothing
+    // came out). Values as in the Linux hid-playstation driver for "no
+    // headphones": output path 0x30 (speaker), volume 0x64 (accepted range
+    // 0x3D..0x64), preamp +6dB. The mixer's speaker_volume scales the level.
+    out[0x06] = 0x64;   // speaker volume
+    out[0x08] = 0x30;   // audio control: output path = speaker
+    out[0x26] = 0x02;   // audio control 2: speaker preamp gain +6dB
     // [0x09] mic led stays 0 (Off).
 
     EncodeTriggerBlock(command.right_mode, command.right, &out[0x0B]);

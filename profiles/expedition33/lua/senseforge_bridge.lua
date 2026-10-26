@@ -1,5 +1,22 @@
 -- SenseForgeBridge — SF-12b fase 2.12: eventos de gameplay do E33 → runtime.
 --
+-- v2.15 (debrief 19:53 PID 29776): speaker FUNCIONA (bip de teste e ding
+--  ouvidos apos o fix do relatorio HID); ding saiu baixo. ui_tick agora vem de
+--  WBP_BaseButton_C:BP_OnFocusReceived; ainda sem validacao no jogo.
+--
+-- v2.14 (debrief 19:42 PID 30472): os 4 hooks Up/Down/Left/RightPressed
+--  registraram mas NUNCA dispararam ao navegar em menus, entao o ui_tick segue
+--  sem fonte. Hooks so de diagnostico (ui/diag_*) nos candidatos de foco e
+--  ativacao; o primeiro que disparar ao mover o cursor vira o novo ui_tick.
+--
+-- v2.13 (SF-12b speaker, 25/10): eventos so de speaker, sem lightbar/motores.
+--  * item_pickup: AC_jRPG_InventoryManager_C:AddItemToInventory e
+--    AddItemInstanceToInventory (item/Lumina que entra no inventario).
+--  * ui_tick: BP_UINavigationComponent_C:Up/Down/Left/RightPressed (cursor de
+--    menu), debounce proprio de 80ms. Nomes vindos do ObjectDump de 24/10;
+--    NAO validados no jogo: o diag registra os primeiros disparos de cada hook
+--    para conferir se item_pickup nao dispara ao carregar o save.
+--
 -- v2.12 (SF-15/SF-16, 25/10):
 --  * Dumps de objetos/UHT/atores no boot e F7 so com [Dev] ue4ss_dumps=1 no
 --    senseforge_user.ini: no pacote publico eles causavam stutter no boot
@@ -69,7 +86,7 @@
 -- Classes BP de batalha podem carregar só no combate: hooks pendentes são
 -- re-tentados a cada 15s.
 
-local VERSION = "2.12"
+local VERSION = "2.15"
 
 local function log(fmt, ...)
     print(string.format("[SenseForgeBridge] " .. fmt, ...))
@@ -106,10 +123,10 @@ end
 
 local last_emit = {}
 
-local function emit(event_id, scale)
+local function emit(event_id, scale, debounce)
     local now = os.clock()
     local prev = last_emit[event_id]
-    if prev and (now - prev) < DEBOUNCE_S then
+    if prev and (now - prev) < (debounce or DEBOUNCE_S) then
         return false
     end
     last_emit[event_id] = now
@@ -226,6 +243,10 @@ local MUSIC = "/Game/Gameplay/InteractiveMusic/BP_InteractiveBattleMusicControll
 local FREEAIM = "/Game/Gameplay/FreeAim/BP_FreeAim.BP_FreeAim_C:"
 local FREEAIM_BATTLE = "/Game/Gameplay/FreeAim/BP_FreeAimShooterBattleComponent.BP_FreeAimShooterBattleComponent_C:"
 
+local INVENTORY = "/Game/jRPGTemplate/Blueprints/Components/AC_jRPG_InventoryManager.AC_jRPG_InventoryManager_C:"
+local BTN = "/Game/UI/Widgets/CommonElements/Buttons/WBP_BaseButton.WBP_BaseButton_C:"
+local UINAV = "/Game/Gameplay/UINavigation/BP_UINavigationComponent.BP_UINavigationComponent_C:"
+
 local HOOKS = {
     -- fonte principal (BPI_BattleListener)
     { tag = "summary/parry", path = SUMMARY .. "OnSuccessfulParry",
@@ -266,6 +287,21 @@ local HOOKS = {
     { tag = "mgr/parry_action", path = MGR .. "OnParryAction", kind = "diag" },
     { tag = "mgr/received_damage", path = MGR .. "OnCharacterReceivedDamages",
       kind = "damage" },
+    -- speaker (v2.13): eventos sem lightbar/motores
+    { tag = "inv/add_item", path = INVENTORY .. "AddItemToInventory",
+      kind = "event", event = "item_pickup", debounce = 0.4 },
+    { tag = "inv/add_item_instance", path = INVENTORY .. "AddItemInstanceToInventory",
+      kind = "event", event = "item_pickup", debounce = 0.4 },
+    -- ui_tick (v2.15): botoes do menu recebem foco (BP_OnFocusReceived) -- os
+    -- hooks Up/Down/Left/RightPressed e os 5 diag da v2.14 nunca dispararam.
+    { tag = "ui/focus_received", path = BTN .. "BP_OnFocusReceived",
+      kind = "event", event = "ui_tick", debounce = 0.08 },
+    { tag = "ui/diag_hovered", path = BTN .. "BP_OnHovered", kind = "diag" },
+    { tag = "ui/diag_common_focus",
+      path = "/Script/CommonUI.CommonButtonBase:HandleFocusReceived", kind = "diag" },
+    { tag = "ui/diag_items_focus",
+      path = "/Game/UI/Widgets/InGame_Menu/Items/WBP_Items_Panel.WBP_Items_Panel_C:OnItemFocused",
+      kind = "diag" },
     -- estudo SF-16 (v2.12): so diagnostico
     { tag = "skill/execute",
       path = "/Game/Gameplay/Battle/Skills/BP_Battle_SkillScript.BP_Battle_SkillScript_C:ExecuteSkill",
@@ -354,7 +390,7 @@ local function make_callback(hook)
     if hook.kind == "event" then
         return function(...)
             diag(hook)
-            if emit(hook.event) then
+            if emit(hook.event, nil, hook.debounce) then
                 log("%s -> %s", hook.tag, hook.event)
             end
         end

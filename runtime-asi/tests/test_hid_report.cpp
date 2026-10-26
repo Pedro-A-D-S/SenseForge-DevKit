@@ -111,6 +111,8 @@ int main() {
     assert(usb[0x01] == 0xFF && usb[0x02] == 0xF7);  // feature mask
     assert(usb[0x03] == 0 && usb[0x04] == 0);        // rumble suppressed
     assert(usb[0x27] == 0x03);                       // dualsensitive constant
+    // SF-12b: speaker enabled (volume + output path + preamp), never muted
+    assert(usb[0x06] == 0x64 && usb[0x08] == 0x30 && usb[0x26] == 0x02);
     assert(usb[0x2A] == 0x02);                       // leds enabled
     assert(usb[0x2B] == 1);                          // medium brightness
     assert(usb[0x2C] == (0b01111 | 0x20));           // player LEDs + no-fade

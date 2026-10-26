@@ -86,6 +86,16 @@ struct LightingRules {
 // reported by the UE4SS Lua bridge over UDP. While active it overlays the
 // composed state command: lightbar flash + rumble motors + optional
 // trigger pulse, linearly fading over duration_ms.
+// SF-12b: synthesized controller-speaker blip for an event (no wav asset).
+// A sine at `frequency_hz` with an exponential decay; present when the
+// manifest declares "speaker_tone".
+struct SpeakerTone {
+    int frequency_hz = 0;   // 100..8000; 0 = no tone
+    int duration_ms = 120;  // 20..1000
+    double gain = 0.5;      // 0..1 before the speaker volume / panel intensity
+    int second_hz = 0;      // optional 2nd partial (bell-like ding); 0 = none
+};
+
 struct EventEffect {
     std::string id;  // matches the UDP "id" field ("parry", "gradient", ...)
     std::array<int, 3> lightbar_rgb{0, 0, 0};
@@ -94,8 +104,18 @@ struct EventEffect {
     int trigger_amplitude = 0;      // 0 = no trigger pulse; 1-8 HID units
     int trigger_frequency_hz = 0;   // pulse frequency when amplitude > 0
     int duration_ms = 300;  // fade window (50..5000)
+    SpeakerTone speaker_tone;  // SF-12b: speaker-only feedback (optional)
     bool present = false;   // parsed from the manifest (not a wire field)
 };
+
+// True when the effect drives the lightbar, rumble or triggers. A speaker-only
+// effect (item pickup, UI tick) must NOT start the HID flash overlay, which
+// would blank the lightbar for its whole fade window.
+inline bool HasHidOutput(const EventEffect& effect) {
+    return effect.lightbar_rgb[0] != 0 || effect.lightbar_rgb[1] != 0 ||
+           effect.lightbar_rgb[2] != 0 || effect.motor_left != 0 ||
+           effect.motor_right != 0 || effect.trigger_amplitude != 0;
+}
 
 struct GameMetadata {
     std::string game_id;

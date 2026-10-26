@@ -3,6 +3,7 @@
 
 #include "test_common.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <vector>
 
@@ -19,6 +20,23 @@ std::vector<float> Constant(float value, size_t count) {
 }  // namespace
 
 int main() {
+    // ---- SynthesizeTone (SF-12b speaker blips) ----------------------------
+    {
+        const auto tone = SynthesizeTone(880, 100, 0.5, 0);
+        assert(tone.size() == 4800);  // 100ms @ 48kHz
+        float peak = 0.0f;
+        for (float v : tone) peak = std::max(peak, std::fabs(v));
+        assert(peak > 0.3f && peak <= 0.5f + 1e-4f);        // peak ~ gain
+        assert(std::fabs(tone.back()) < 0.01f);              // decayed out
+        assert(std::fabs(tone.front()) < 0.05f);             // soft attack
+
+        assert(SynthesizeTone(0, 100, 0.5, 0).empty());      // no tone
+        assert(SynthesizeTone(880, 5, 0.5, 0).size() == 960);   // min 20ms
+        assert(SynthesizeTone(880, 9000, 0.5, 0).size() == 48000);  // max 1s
+        const auto loud = SynthesizeTone(880, 100, 9.0, 1320);
+        for (float v : loud) assert(std::fabs(v) <= 1.0f);   // gain clamped
+    }
+
     // ---- Routing: speaker voices feed only channels 0/1 -------------------
     {
         MixerCore mixer;

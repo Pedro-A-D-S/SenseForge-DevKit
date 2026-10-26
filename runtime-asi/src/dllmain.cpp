@@ -17,6 +17,8 @@
 #include <filesystem>
 #include <string>
 
+#include <nlohmann/json.hpp>
+
 #include "hot_reload.hpp"
 #include "hid_controller.hpp"
 #include "event_bridge.hpp"
@@ -32,6 +34,7 @@
 #include "quad_audio_mixer.hpp"
 #include "sense_json.hpp"
 #include "state_engine.hpp"
+#include "safe_util.hpp"
 #include "wav_loader.hpp"
 #include "xinput_hook.hpp"
 
@@ -41,6 +44,24 @@
 #include <vector>
 
 namespace {
+
+// SF-22: path.string() is the ANSI code page on Windows; Studio expects UTF-8.
+std::string PathUtf8(const std::filesystem::path& path) {
+    const auto u8 = path.u8string();
+    return std::string(reinterpret_cast<const char*>(u8.data()), u8.size());
+}
+
+// SF-22: every line sent to Studio is built with a JSON serializer, never by
+// concatenation: ids, paths and error texts can carry quotes, backslashes or
+// control characters (and non-UTF-8 bytes, which become U+FFFD).
+void SendJson(senseforge::IpcPipeClient& ipc, const nlohmann::json& message) {
+    try {
+        ipc.WriteLine(message.dump(-1, ' ', false,
+                                   nlohmann::json::error_handler_t::replace));
+    } catch (...) {
+        // telemetry is best-effort: never let it take the worker down
+    }
+}
 
 #ifdef SENSEFORGE_RESHADE_ADDON
 // SF-14: in the ReShade add-on the controls live in ReShade's own overlay
@@ -104,10 +125,57 @@ std::filesystem::path FindManifest(const std::filesystem::path& dir) {
 // sf-agent (PowerShell executor used by cloud dev sessions) runs only while
 // the game is being played. The worker wakes its scheduled task with
 // schtasks /run — CREATE_NO_WINDOW (no console flash) and launched by the
-// Task Scheduler, i.e. outside the Steam job object of the game. Re-woken
-// every 5 min in case it died; /run on a running task is a no-op.
+// Task Scheduler, i.e. outside the Steam job object of the game.
+//
+// The wake is skipped while the agent is alive (fresh "pid=" heartbeat, the
+// agent rewrites it every 30s). Without this check every wake spawned a new
+// powershell.exe that only found out through its mutex that an agent already
+// existed and died — a console flashing on screen every 5 min (25/10).
+bool DevAgentAlive() {
+    wchar_t base[MAX_PATH] = {};
+    const DWORD n = GetEnvironmentVariableW(L"LOCALAPPDATA", base, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH) {
+        return false;
+    }
+    const std::filesystem::path beat =
+        std::filesystem::path(base) / L"senseforge" / L"agent" /
+        L"agent.heartbeat";
+    WIN32_FILE_ATTRIBUTE_DATA data{};
+    if (!GetFileAttributesExW(beat.c_str(), GetFileExInfoStandard, &data)) {
+        return false;
+    }
+    FILETIME now_ft{};
+    GetSystemTimeAsFileTime(&now_ft);
+    ULARGE_INTEGER now{}, written{};
+    now.LowPart = now_ft.dwLowDateTime;
+    now.HighPart = now_ft.dwHighDateTime;
+    written.LowPart = data.ftLastWriteTime.dwLowDateTime;
+    written.HighPart = data.ftLastWriteTime.dwHighDateTime;
+    constexpr ULONGLONG kFreshSeconds = 90;  // 3 missed heartbeats
+    if (now.QuadPart < written.QuadPart ||
+        (now.QuadPart - written.QuadPart) / 10000000ULL > kFreshSeconds) {
+        return false;
+    }
+    // "stopped <time>" is written when the agent exits on its own.
+    char head[8] = {};
+    DWORD got = 0;
+    HANDLE file = CreateFileW(beat.c_str(), GENERIC_READ,
+                              FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                              OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE) {
+        return false;
+    }
+    ReadFile(file, head, 4, &got, nullptr);
+    CloseHandle(file);
+    return got == 4 && std::string(head, 4) == "pid=";
+}
+
 DWORD WINAPI DevAgentWakeThread(LPVOID /*param*/) {
     for (;;) {
+        if (DevAgentAlive()) {
+            Sleep(5 * 60 * 1000);
+            continue;
+        }
         wchar_t cmd[] = L"schtasks.exe /run /tn SenseForgeAgent";
         STARTUPINFOW si{};
         si.cb = sizeof(si);
@@ -121,7 +189,9 @@ DWORD WINAPI DevAgentWakeThread(LPVOID /*param*/) {
             senseforge::DebugLog("dev agent: wake failed err=%lu",
                                  GetLastError());
         }
-        Sleep(5 * 60 * 1000);
+        // Re-check soon: a dead agent should come back within a minute, a
+        // live one is then left alone for 5 min.
+        Sleep(60 * 1000);
     }
 }
 
@@ -231,9 +301,7 @@ DWORD WINAPI SenseForgeWorkerThread(LPVOID /*param*/) {
         senseforge::ParseManifest(manifest_path, manifest, &manifest_error);
 
     senseforge::IpcPipeClient ipc;  // \\.\pipe\senseforge_ipc → Studio (SF-7)
-    ipc.WriteLine(
-        "{\"type\":\"runtime_ready\",\"warmup_ms\":" +
-        std::to_string(warmup_ms) + "}");
+    SendJson(ipc, {{"type", "runtime_ready"}, {"warmup_ms", warmup_ms}});
     senseforge::DebugLog(
         "subsystems: overlay_installed=%d audio_ok=%d xinput=%d manifest=%s "
         "ok=%d err=%s",
@@ -275,14 +343,9 @@ DWORD WINAPI SenseForgeWorkerThread(LPVOID /*param*/) {
                              if (overlay_installed) {
                                  push_categories(manifest);
                              }
-                             ipc.WriteLine(
-                                 "{\"type\":\"manifest_reloaded\",\"path\":\"" +
-                                 path.string() + "\"}");
+                             SendJson(ipc, {{"type", "manifest_reloaded"}, {"path", PathUtf8(path)}});
                          } else {
-                             ipc.WriteLine(
-                                 "{\"type\":\"manifest_reload_rejected\","
-                                 "\"error\":\"" +
-                                 error + "\"}");
+                             SendJson(ipc, {{"type", "manifest_reload_rejected"}, {"error", error}});
                          }
                      });
     watcher.Register(dir / "senseforge_user.ini",
@@ -308,9 +371,7 @@ DWORD WINAPI SenseForgeWorkerThread(LPVOID /*param*/) {
                              static_cast<int>(ini.GetInt(
                                  "AdaptiveTriggers",
                                  "right_trigger_intensity", 3)));
-                         ipc.WriteLine(
-                             "{\"type\":\"user_ini_reloaded\",\"path\":\"" +
-                             path.string() + "\"}");
+                         SendJson(ipc, {{"type", "user_ini_reloaded"}, {"path", PathUtf8(path)}});
                      });
 
     // SF-12b: gameplay events from the UE4SS Lua bridge (Q9: parry flash
@@ -322,8 +383,19 @@ DWORD WINAPI SenseForgeWorkerThread(LPVOID /*param*/) {
         static_cast<std::uint16_t>(ini.GetInt("Events", "udp_port", 6970))});
     event_bridge.Start();
     if (ini.GetBool("Events", "enable_file", true)) {
-        event_bridge.StartFile(
-            dir / ini.GetString("Events", "file", "senseforge_events.ndjson"));
+        // SF-22: the events file must live inside the game directory; an ini
+        // value like "..\x" or "C:\x" would make the runtime tail (and
+        // keep open) any file the player can read.
+        std::filesystem::path events_path;
+        if (senseforge::ResolveInside(
+                dir,
+                ini.GetString("Events", "file", "senseforge_events.ndjson"),
+                &events_path)) {
+            event_bridge.StartFile(events_path);
+        } else {
+            senseforge::DebugLog(
+                "[Events] file outside the game directory: ignored");
+        }
     }
 
     // Worker loop: 5ms hot-reload tick · 50Hz state application against live
@@ -430,8 +502,7 @@ DWORD WINAPI SenseForgeWorkerThread(LPVOID /*param*/) {
         for (const auto& flash : event_bridge.pending_flashes()) {
             senseforge::DebugLog("event flash: id=%s scale=%.2f",
                                  flash.id.c_str(), flash.scale);
-            ipc.WriteLine("{\"type\":\"game_flash\",\"id\":\"" + flash.id +
-                          "\"}");
+            SendJson(ipc, {{"type", "game_flash"}, {"id", flash.id}});
             // Disabled in the panel (master or per event): logged and
             // forwarded to Studio, never felt.
             if (!sf_enabled) {
@@ -444,7 +515,33 @@ DWORD WINAPI SenseForgeWorkerThread(LPVOID /*param*/) {
                 log_event("flash", flash.id, flash.scale, false,
                           "sem event_effect no manifesto");
             } else {
-                start_flash(flash.id, flash.scale);
+                const senseforge::EventEffect* played = nullptr;
+                for (const auto& candidate : manifest.event_effects) {
+                    if (candidate.present && candidate.id == flash.id) {
+                        played = &candidate;
+                        break;
+                    }
+                }
+                // SF-12b: speaker-only effects (item pickup, UI tick) never
+                // start the HID flash overlay — it would blank the lightbar.
+                if (played == nullptr || senseforge::HasHidOutput(*played)) {
+                    start_flash(flash.id, flash.scale);
+                }
+                if (played != nullptr && audio_ok &&
+                    played->speaker_tone.frequency_hz > 0) {
+                    // Same panel intensity (0-150%) as the rumble.
+                    const double intensity = std::clamp(
+                        ini.GetFloat("EventEffects",
+                                     flash.id + "_intensity", 100.0),
+                        0.0, 150.0);
+                    const auto tone = senseforge::SynthesizeTone(
+                        played->speaker_tone.frequency_hz,
+                        played->speaker_tone.duration_ms,
+                        played->speaker_tone.gain, played->speaker_tone.second_hz);
+                    audio_mixer.core().AddOneShot(
+                        senseforge::Bus::Speaker, tone, tone,
+                        flash.scale * intensity / 100.0);
+                }
                 log_event("flash", flash.id, flash.scale, true, "");
             }
         }
@@ -495,10 +592,7 @@ DWORD WINAPI SenseForgeWorkerThread(LPVOID /*param*/) {
 
         // Captured rumble becomes an IPC telemetry event (Shadow Play input).
         if (rumble_dirty.exchange(false)) {
-            ipc.WriteLine("{\"type\":\"xinput_rumble\",\"left\":" +
-                          std::to_string(rumble_left.load()) +
-                          ",\"right\":" +
-                          std::to_string(rumble_right.load()) + "}");
+            SendJson(ipc, {{"type", "xinput_rumble"}, {"left", rumble_left.load()}, {"right", rumble_right.load()}});
         }
 
         // DualSense input → overlay (SF-6): PS+Options combo toggles the
@@ -668,7 +762,16 @@ DWORD WINAPI SenseForgeWorkerThread(LPVOID /*param*/) {
                     audio_mixer.core().ClearLoop(senseforge::Bus::Haptics);
                 } else {
                     senseforge::WavData wav;
-                    if (senseforge::LoadWav(dir / loop_file, wav, nullptr)) {
+                    // SF-22: manifest path, contained to the game directory.
+                    std::filesystem::path loop_path;
+                    const bool inside =
+                        senseforge::ResolveInside(dir, loop_file, &loop_path);
+                    if (!inside) {
+                        senseforge::DebugLog(
+                            "haptic_loop.file outside the game directory: ignored");
+                    }
+                    if (inside &&
+                        senseforge::LoadWav(loop_path, wav, nullptr)) {
                         std::vector<float> left;
                         std::vector<float> right;
                         senseforge::SplitChannels(wav, left, right);
@@ -709,18 +812,16 @@ DWORD WINAPI SenseForgeWorkerThread(LPVOID /*param*/) {
                     default:
                         break;
                 }
-                const std::string line =
-                    "{\"type\":\"telemetry_frame\",\"state\":\"" +
-                    active_state + "\",\"transport\":\"" + transport +
-                    "\",\"audio\":\"" +
-                    (audio_ok ? audio_mixer.device_name() : "none") +
-                    "\",\"xinput_hook\":" +
-                    (xinput_hook.installed() ? "true" : "false") +
-                    ",\"overlay\":" +
-                    (overlay_installed ? "true" : "false") +
-                    ",\"bindings_live\":" + std::to_string(live) +
-                    ",\"bindings_dead\":" + std::to_string(dead) + "}";
-                ipc.WriteLine(line);
+                SendJson(ipc,
+                         {{"type", "telemetry_frame"},
+                          {"state", active_state},
+                          {"transport", transport},
+                          {"audio", audio_ok ? audio_mixer.device_name()
+                                             : std::string("none")},
+                          {"xinput_hook", xinput_hook.installed()},
+                          {"overlay", overlay_installed},
+                          {"bindings_live", live},
+                          {"bindings_dead", dead}});
             }
         }
 

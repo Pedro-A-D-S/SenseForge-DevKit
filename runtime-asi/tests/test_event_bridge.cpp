@@ -143,6 +143,64 @@ int main() {
         assert(std::abs(stale.pending_flashes()[0].scale - 0.5) < 1e-9);
         stale.ClearFlashes();
 
+        // SF-22: a line longer than the cap is dropped up to its newline
+        // and the event after it still arrives (no unbounded line buffer).
+        {
+            std::ofstream out(path, std::ios::app);
+            out << R"({"type":"sf_flash","id":")" << std::string(100000, 'a')
+                << R"(","scale":1.0})" << "\n"
+                << R"({"type":"sf_flash","id":"after_big","scale":1.0})" << "\n";
+        }
+        stale.PollFile();
+        assert(stale.pending_flashes().size() == 1);
+        assert(stale.pending_flashes()[0].id == "after_big");
+        stale.ClearFlashes();
+
+        // SF-22: one poll reads at most 1 MiB; the rest is picked up by the
+        // next polls, and a line that crosses the cap is resumed whole.
+        {
+            std::ofstream out(path, std::ios::app);
+            for (int i = 0; i < 40000; ++i) {
+                out << R"({"type":"sf_state","id":"filler","value":1.0})" << "\n";
+            }
+            out << R"({"type":"sf_flash","id":"last_one","scale":1.0})" << "\n";
+        }
+        bool seen_last = false;
+        for (int polls = 0; polls < 8 && !seen_last; ++polls) {
+            stale.PollFile();
+            for (const auto& flash : stale.pending_flashes()) {
+                seen_last = seen_last || flash.id == "last_one";
+            }
+            stale.ClearFlashes();
+        }
+        assert(seen_last);
+
+        // SF-22: ceilings on everything the producer chooses. New state
+        // keys stop at 256 (known keys keep updating), ids over 64 chars are
+        // ignored, and a flash burst cannot grow the queue without bound.
+        {
+            std::ofstream out(path, std::ios::app);
+            for (int i = 0; i < 400; ++i) {
+                out << R"({"type":"sf_state","id":"key_)" << i
+                    << R"(","value":1.0})" << "\n";
+            }
+            out << R"({"type":"sf_state","id":"filler","value":7.0})" << "\n";
+            out << R"({"type":"sf_state","id":")" << std::string(65, 'x')
+                << R"(","value":1.0})" << "\n";
+            for (int i = 0; i < 1000; ++i) {
+                out << R"({"type":"sf_flash","id":"burst","scale":1.0})" << "\n";
+            }
+        }
+        for (int polls = 0; polls < 4; ++polls) {
+            stale.PollFile();
+        }
+        assert(stale.values().size() <= 256);
+        assert(stale.values().count("key_399") == 0);       // over the cap
+        assert(stale.values().at("filler") == 7.0);          // known key updates
+        assert(stale.values().count(std::string(65, 'x')) == 0);
+        assert(stale.pending_flashes().size() <= 256);
+        stale.ClearFlashes();
+
         std::filesystem::remove(path, ec);
     }
 

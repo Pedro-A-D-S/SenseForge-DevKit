@@ -15,6 +15,14 @@
 
 namespace senseforge {
 
+// SF-22: true when the process serving `pipe` (a client-side pipe handle)
+// runs as the same user as the current process. The pipe name is
+// machine-global and Studio is not installed on player PCs, so any local
+// process can create it first; telemetry and the trigger-test request must
+// not go to (or come from) another user's process. Fail-closed: any error
+// while checking (including no access to that process) returns false.
+bool ServerRunsAsCurrentUser(HANDLE pipe);
+
 class IpcPipeClient {
 public:
     // Called with one full JSON line for every request Studio pushes

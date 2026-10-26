@@ -4,6 +4,7 @@
 // transports are provably equivalent at the byte level.
 
 #include "hid_controller.hpp"
+#include "safe_util.hpp"
 
 #include <windows.h>
 
@@ -48,15 +49,10 @@ double PresetToScale(int preset) {
 }
 
 int ScaleForce(int force, double scale) {
-    if (scale <= 0.0 || force <= 0) {
+    if (!(scale > 0.0) || force <= 0) {  // also rejects NaN
         return 0;  // -> encoding degrades to Off (fail-closed)
     }
-    const double scaled = force * scale;
-    if (scaled < 1.0) {
-        return 1;
-    }
-    return static_cast<int>(scaled + 0.5) > 8 ? 8
-                                              : static_cast<int>(scaled + 0.5);
+    return ClampInt(force * scale, 1, 8);
 }
 
 TriggerParams ScaleParams(TriggerParams params, double scale) {
@@ -451,9 +447,11 @@ HidOutputCommand ComposeCommand(const Manifest& manifest, const State& state,
             continue;  // binding unhealthy — keep base force (fail-closed)
         }
         const double t = std::clamp(tension, 0.0, 1.0);
-        params.force = static_cast<int>(effect.base_force +
-                                        (effect.max_force - effect.base_force) * t +
-                                        0.5);
+        // Out-of-range manifest forces stay out of range (the encoder turns
+        // them into Off) but the double -> int conversion is always defined.
+        params.force = ClampInt(effect.base_force +
+                                    (effect.max_force - effect.base_force) * t,
+                                0, 1000);
         if (effect.full_draw_vibration_hz > 0 && t >= effect.full_draw_threshold) {
             mode = TriggerEffectMode::Vibration;
             params.amplitude = std::max(params.force, 1);
@@ -474,9 +472,9 @@ HidOutputCommand ComposeCommand(const Manifest& manifest, const State& state,
             ini.GetString("Lighting", "static_color_rgb", "0,112,209");
         unsigned int r = 0, g = 0, b = 0;
         if (std::sscanf(rgb_text.c_str(), "%u,%u,%u", &r, &g, &b) == 3) {
-            command.lightbar_rgb[0] = static_cast<std::uint8_t>(r);
-            command.lightbar_rgb[1] = static_cast<std::uint8_t>(g);
-            command.lightbar_rgb[2] = static_cast<std::uint8_t>(b);
+            command.lightbar_rgb[0] = ClampByte(static_cast<double>(r));
+            command.lightbar_rgb[1] = ClampByte(static_cast<double>(g));
+            command.lightbar_rgb[2] = ClampByte(static_cast<double>(b));
         }
     } else if (lightbar_mode == 1 &&
                manifest.lighting_rules.lightbar_mode ==
@@ -488,8 +486,8 @@ HidOutputCommand ComposeCommand(const Manifest& manifest, const State& state,
             const auto& high = manifest.lighting_rules.high_health_rgb;
             const auto& low = manifest.lighting_rules.low_health_rgb;
             for (int i = 0; i < 3; ++i) {
-                command.lightbar_rgb[i] = static_cast<std::uint8_t>(
-                    low[i] + (high[i] - low[i]) * h + 0.5);
+                command.lightbar_rgb[i] =
+                    ClampByte(low[i] + (high[i] - low[i]) * h);
             }
         }
         const std::string& adrenaline_binding =
@@ -501,7 +499,7 @@ HidOutputCommand ComposeCommand(const Manifest& manifest, const State& state,
             if (!std::isnan(adrenaline) && adrenaline >= 5.0) {
                 for (int i = 0; i < 3; ++i) {
                     command.lightbar_rgb[i] =
-                        static_cast<std::uint8_t>(pulse[i]);
+                        ClampByte(static_cast<double>(pulse[i]));
                 }
             }
         }
@@ -518,8 +516,7 @@ HidOutputCommand ComposeCommand(const Manifest& manifest, const State& state,
         if (!binding.empty()) {
             const double segments = LookupValue(values, binding);
             if (!std::isnan(segments)) {
-                const int n = std::clamp(
-                    static_cast<int>(segments + 0.5), 0, 5);
+                const int n = ClampInt(segments, 0, 5);
                 command.player_leds = static_cast<std::uint8_t>(
                     n >= 5 ? 0x1F : ((1 << n) - 1));
             }
@@ -554,20 +551,16 @@ bool ApplyEventEffect(const EventEffect& effect, double k,
         150.0);
     if (ini.GetBool("EventEffects", effect.id + "_lightbar", true)) {
         for (int i = 0; i < 3; ++i) {
-            command.lightbar_rgb[i] = static_cast<std::uint8_t>(
-                effect.lightbar_rgb[i] * k + 0.5);
+            command.lightbar_rgb[i] = ClampByte(effect.lightbar_rgb[i] * k);
         }
     }
     // Rumble and trigger pulse follow the panel intensity (0-150%).
     const double feel = k * intensity / 100.0;
-    command.motor_left = static_cast<std::uint8_t>(
-        std::min(255.0, effect.motor_left * feel + 0.5));
-    command.motor_right = static_cast<std::uint8_t>(
-        std::min(255.0, effect.motor_right * feel + 0.5));
+    command.motor_left = ClampByte(effect.motor_left * feel);
+    command.motor_right = ClampByte(effect.motor_right * feel);
     if (effect.trigger_amplitude > 0 && effect.trigger_frequency_hz > 0 &&
         feel > 0.0) {
-        const int amplitude = std::clamp(
-            static_cast<int>(effect.trigger_amplitude * feel + 0.5), 1, 8);
+        const int amplitude = ClampInt(effect.trigger_amplitude * feel, 1, 8);
         command.left_mode = TriggerEffectMode::Vibration;
         command.right_mode = TriggerEffectMode::Vibration;
         command.left.amplitude = amplitude;
